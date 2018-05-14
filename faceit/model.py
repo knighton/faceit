@@ -57,6 +57,7 @@ class IsoBlock(nn.Module):
         gate = self.bn2(gate).clamp(min=0)
         gate = self.drop2(gate)
         w = self.weights
+        return w[0] * x + w[1] * conv + w[2] * gate
 
 
 class ReduceBlock(nn.Module):
@@ -161,7 +162,8 @@ class Model(nn.Module):
             nn.Linear(k, 21 * 2),
         )
 
-    def forward(self, crops):
+    def forward(self, xx):
+        crops, = xx
         ff = self.features(crops)
         is_faces = self.is_face(ff)
         is_males = self.is_male(ff)
@@ -169,6 +171,13 @@ class Model(nn.Module):
         bboxes = self.get_face_bbox(ff)
         keypoints = self.get_keypoints(ff)
         return is_faces, is_males, poses, bboxes, keypoints
+
+    def train_on_batch(self, optimizer, xx, yy_true):
+        optimizer.zero_grad()
+        yy_pred = self.forward(xx)
+
+    def val_on_batch(self, xx, yy):
+        yy_pred = self.forward(xx)
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
                      batch_size=32, verbose=2, epoch=None):
@@ -178,7 +187,29 @@ class Model(nn.Module):
             each_batch = tqdm(each_batch, total=total, leave=False)
 
         for is_training, xx, yy in each_batch:
-            print(is_training, len(xx), len(yy))
+            x, = xx
+            x = x.astype('float32')
+            x /= 127.5
+            x -= 1
+            x = x.transpose([0, 3, 1, 2])
+            x = torch.from_numpy(x)
+            xx = [x]
+
+            is_face, is_male, pose, bbox, keypoint = yy
+            is_face = torch.from_numpy(is_face)
+            is_male = torch.from_numpy(is_male)
+            pose = torch.from_numpy(pose)
+            bbox = torch.from_numpy(bbox)
+            keypoint = torch.from_numpy(keypoint)
+            yy = is_face, is_male, pose, bbox, keypoint
+
+            if is_training:
+                self.train()
+                self.train_on_batch(optimizer, xx, yy)
+            else:
+                self.eval()
+                self.val_on_batch(xx, yy)
+
 
     def fit(self, dataset, optimizer, initial_epoch=0, num_epochs=10,
             max_batches_per_epoch=None, batch_size=32, verbose=2):
