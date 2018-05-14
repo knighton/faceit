@@ -250,7 +250,7 @@ class Model(nn.Module):
         extras = gender_acc, bbox_dist, keypoint_dist
         return losses, extras
 
-    def train_on_batch(self, optimizer, xx, yy_true):
+    def train_on_batch(self, optimizer, xx, yy_true, loss_lists, extra_lists):
         optimizer.zero_grad()
         yy_pred = self.forward(xx)
         losses, extras = self.get_loss(yy_true, yy_pred)
@@ -258,25 +258,37 @@ class Model(nn.Module):
         torch.autograd.backward(losses, grads)
         optimizer.step()
         losses = [mean_to_float(x) for x in losses]
-        gender_acc, bbox_dist, keypoint_dist = map(mean_to_float, extras)
+        extras = map(mean_to_float, extras)
+        for i, loss in enumerate(losses):
+            loss_lists[i].append(loss)
+        for i, extra in enumerate(extras):
+            extra_lists[i].append(extra)
+        """
         print()
         print(losses)
         print(gender_acc)
         print(bbox_dist)
         print(keypoint_dist)
         print()
+        """
 
-    def val_on_batch(self, xx, yy_true):
+    def val_on_batch(self, xx, yy_true, loss_lists, extra_lists):
         yy_pred = self.forward(xx)
         losses, extras = self.get_loss(yy_true, yy_pred)
         losses = [mean_to_float(x) for x in losses]
-        gender_acc, bbox_dist, keypoint_dist = map(mean_to_float, extras)
+        extras = map(mean_to_float, extras)
+        for i, loss in enumerate(losses):
+            loss_lists[i].append(loss)
+        for i, extra in enumerate(extras):
+            extra_lists[i].append(extra)
+        """
         print()
         print(losses)
         print(gender_acc)
         print(bbox_dist)
         print(keypoint_dist)
         print()
+        """
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
                      batch_size=32, verbose=2, epoch=None):
@@ -285,6 +297,10 @@ class Model(nn.Module):
         if 2 <= verbose:
             each_batch = tqdm(each_batch, total=total, leave=False)
 
+        train_loss_lists = [[] for i in range(5)]
+        train_extra_lists = [[] for i in range(3)]
+        val_loss_lists = [[] for i in range(5)]
+        val_extra_lists = [[] for i in range(3)]
         for is_training, xx, yy in each_batch:
             x, = xx
             x = x.astype('float32')
@@ -304,11 +320,26 @@ class Model(nn.Module):
 
             if is_training:
                 self.train()
-                self.train_on_batch(optimizer, xx, yy)
+                self.train_on_batch(optimizer, xx, yy, train_loss_lists,
+                                    train_extra_lists)
             else:
                 self.eval()
-                self.val_on_batch(xx, yy)
+                self.val_on_batch(xx, yy, val_loss_lists, val_extra_lists)
 
+        names = 'faceness', 'gender', 'pose', 'bbox', 'keypoints'
+        train_losses = tuple(map(np.mean, train_loss_lists))
+        train_extras = tuple(map(np.mean, train_extra_lists))
+        val_losses = tuple(map(np.mean, val_loss_lists))
+        val_extras = tuple(map(np.mean, val_extra_lists))
+        print('+' * 40)
+        for i in range(5):
+            print('loss (%s): .%3f %.3f' %
+                  (names[i], train_losses[i], val_losses[i]))
+
+        names = 'gender_acc', 'bbox_dist', 'keypoint_dist'
+        for i in range(3):
+            print('%s: %.3f %.3f' % (names[i], train_extras[i], val_extras[i]))
+        print('+' * 40)
 
     def fit(self, dataset, optimizer, initial_epoch=0, num_epochs=10,
             max_batches_per_epoch=None, batch_size=32, verbose=2):
