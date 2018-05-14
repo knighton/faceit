@@ -98,7 +98,7 @@ def process_dict(in_dir, d, crops, infos):
     face_min_x = face_min_x - crop_min_x
     face_min_y = face_min_y - crop_min_y
     face_max_x = face_min_x + face_w
-    face_max_y = face_max_y + face_h
+    face_max_y = face_min_y + face_h
     info += [face_min_x, face_min_y, face_max_x, face_max_y]
     for i in range(1, 22):
         x = d['P%dX' % i] // 2 - crop_min_x

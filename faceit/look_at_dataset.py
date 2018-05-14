@@ -16,7 +16,14 @@ def parse_flags():
 
 
 def draw_sample(crop, info, f):
-    im = Image.fromarray(crop)
+    im = crop.copy()
+
+    print(info[4:8])
+    face_min_x, face_min_y, face_max_x, face_max_y = \
+        map(lambda x: x.astype('int32').clip(0, 128), info[4:8])
+    im[face_min_y:face_max_y, face_min_x:face_max_x, :] //= 2
+
+    im = Image.fromarray(im)
     im.save(f)
 
 
