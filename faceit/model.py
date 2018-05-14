@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from blox import \
     conv_bn, conv_bn_pool, dense_bn, IsoConvBlock, IsoDenseBlock, ReduceBlock, \
-    Flatten, Scale
+    Flatten, Scale, Degrees
 
 
 def mean_squared_error(true, pred):
@@ -28,11 +28,7 @@ def binary_accuracy(true, pred):
 
 
 def dist_to_loss(dist):
-    return (dist / 32).tanh()
-
-
-def dist_to_loss(dist):
-    return dist ** 0.5
+    return dist / 32
 
 
 def compare_points(true_points, pred_points):
@@ -41,11 +37,11 @@ def compare_points(true_points, pred_points):
     ret_loss = torch.zeros(true_points.shape[0], num_points)
     ret_dist = torch.zeros(true_points.shape[0], num_points)
     for i in range(num_points):
-        truex = true_points[:, i * 2 + 0]
-        predx = pred_points[:, i * 2 + 0]
+        truex = true_points[:, i * 2 + 0].clamp(-64, 196)
+        predx = pred_points[:, i * 2 + 0].clamp(-64, 196)
         distx = truex - predx
-        truey = true_points[:, i * 2 + 1]
-        predy = pred_points[:, i * 2 + 1]
+        truey = true_points[:, i * 2 + 1].clamp(-64, 196)
+        predy = pred_points[:, i * 2 + 1].clamp(-64, 196)
         disty = truey - predy
         dist = (distx * distx + disty * disty) ** 0.5
         ret_dist[:, i] = dist
@@ -66,52 +62,73 @@ class Model(nn.Module):
 
         self.features = nn.Sequential(
             conv_bn_pool(3, k),
+
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+
             ReduceBlock(k),
+
             IsoConvBlock(k),
+            IsoConvBlock(k),
+
             ReduceBlock(k),
+
             IsoConvBlock(k),
+            IsoConvBlock(k),
+
             ReduceBlock(k),
+
             IsoConvBlock(k),
             IsoConvBlock(k),
+
             ReduceBlock(k),
+
             IsoConvBlock(k),
             IsoConvBlock(k),
+
+            ReduceBlock(k),
+
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+
+            ReduceBlock(k),
+
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+
+            Flatten(),
+
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
         )
 
         self.is_face = nn.Sequential(
-            ReduceBlock(k),
-            ReduceBlock(k),
-            Flatten(),
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.is_male = nn.Sequential(
-            ReduceBlock(k),
-            ReduceBlock(k),
-            Flatten(),
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.get_pose = nn.Sequential(
-            ReduceBlock(k),
-            ReduceBlock(k),
-            Flatten(),
+            IsoDenseBlock(k),
             nn.Linear(k, 3),
+            Degrees(),
         )
 
         self.get_face_bbox = nn.Sequential(
-            ReduceBlock(k),
-            ReduceBlock(k),
-            Flatten(),
+            IsoDenseBlock(k),
             nn.Linear(k, 4),
         )
 
         self.get_keypoints = nn.Sequential(
-            ReduceBlock(k),
-            ReduceBlock(k),
-            Flatten(),
+            IsoDenseBlock(k),
             nn.Linear(k, 4),
         )
 
@@ -126,8 +143,8 @@ class Model(nn.Module):
 
         return is_faces, is_males, poses, bboxes, keypoints
 
-    def get_face_loss(self, true, pred):
-        return (true - pred) ** 2
+    def get_faceness_loss(self, true, pred):
+        return binary_cross_entropy(true, pred)
 
     def get_gender_loss(self, true, pred):
         loss = binary_cross_entropy(true, pred)
@@ -135,7 +152,7 @@ class Model(nn.Module):
         return loss, acc
 
     def get_pose_loss(self, true, pred):
-        return (true - pred).abs()
+        return (true - pred).abs() / 32
 
     def get_bbox_loss(self, true, pred):
         return compare_points(true, pred)
@@ -148,7 +165,7 @@ class Model(nn.Module):
             true_keypoints = yy_true
         pred_is_faces, pred_is_males, pred_poses, pred_bboxes, \
             pred_keypoints = yy_pred
-        faceness_loss = self.get_face_loss(true_is_faces, pred_is_faces)
+        faceness_loss = self.get_faceness_loss(true_is_faces, pred_is_faces)
         gender_loss, gender_acc = \
             self.get_gender_loss(true_is_males, pred_is_males)
         pose_loss = self.get_pose_loss(true_poses, pred_poses)
@@ -163,7 +180,7 @@ class Model(nn.Module):
         optimizer.zero_grad()
         yy_pred = self.forward(xx)
         losses, extras = self.get_loss(yy_true, yy_pred)
-        grads = [torch.ones(*x.shape) for x in losses]
+        grads = [torch.ones(*x.shape).cuda() for x in losses]
         torch.autograd.backward(losses, grads)
         optimizer.step()
         losses = [mean_to_float(x) for x in losses]
@@ -206,15 +223,15 @@ class Model(nn.Module):
             x /= 127.5
             x -= 1
             x = x.transpose([0, 3, 1, 2])
-            x = torch.from_numpy(x)
+            x = torch.from_numpy(x).cuda()
             xx = [x]
 
             is_face, is_male, pose, bbox, keypoint = yy
-            is_face = torch.from_numpy(is_face)
-            is_male = torch.from_numpy(is_male)
-            pose = torch.from_numpy(pose)
-            bbox = torch.from_numpy(bbox)
-            keypoint = torch.from_numpy(keypoint)
+            is_face = torch.from_numpy(is_face).cuda()
+            is_male = torch.from_numpy(is_male).cuda()
+            pose = torch.from_numpy(pose).cuda()
+            bbox = torch.from_numpy(bbox).cuda()
+            keypoint = torch.from_numpy(keypoint).cuda()
             yy = is_face, is_male, pose, bbox, keypoint
 
             if is_training:
@@ -293,15 +310,15 @@ class Model(nn.Module):
                 x /= 127.5
                 x -= 1
                 x = x.transpose([0, 3, 1, 2])
-                x = torch.from_numpy(x)
+                x = torch.from_numpy(x).cuda()
                 xx = [x]
 
                 is_face, is_male, pose, bbox, keypoint = yy
-                is_face = torch.from_numpy(is_face)
-                is_male = torch.from_numpy(is_male)
-                pose = torch.from_numpy(pose)
-                bbox = torch.from_numpy(bbox)
-                keypoint = torch.from_numpy(keypoint)
+                is_face = torch.from_numpy(is_face).cuda()
+                is_male = torch.from_numpy(is_male).cuda()
+                pose = torch.from_numpy(pose).cuda()
+                bbox = torch.from_numpy(bbox).cuda()
+                keypoint = torch.from_numpy(keypoint).cuda()
                 yy = is_face, is_male, pose, bbox, keypoint
 
                 yy_pred = self.forward(xx)

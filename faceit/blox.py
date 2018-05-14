@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 conv_bn = lambda in_dim, out_dim: nn.Sequential(
@@ -180,3 +181,8 @@ class Scale(nn.Module):
 
     def forward(self, x):
         return x * self.mul + self.add
+
+
+class Degrees(nn.Module):
+    def forward(self, x):
+        return F.tanh(x / 128) * 180

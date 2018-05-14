@@ -12,6 +12,9 @@ from model import Model
 from util import load_dataset
 
 
+tqdm.monitor_interval = 0
+
+
 def parse_flags():
     a = ArgumentParser()
 
@@ -23,7 +26,7 @@ def parse_flags():
     a.add_argument('--val_frac', type=float, default=0.2)
 
     # Model knobs.
-    a.add_argument('--dim', type=int, default=128)
+    a.add_argument('--dim', type=int, default=64)
 
     # Training knobs.
     a.add_argument('--chk_dir', type=str, default='data/checkpoints/')
@@ -31,7 +34,7 @@ def parse_flags():
     a.add_argument('--momentum', type=float, default=0.8)
     a.add_argument('--num_epochs', type=int, default=10000)
     a.add_argument('--max_batches_per_epoch', type=int, default=32)
-    a.add_argument('--batch_size', type=int, default=16)
+    a.add_argument('--batch_size', type=int, default=32)
 
     return a.parse_args()
 
@@ -90,7 +93,7 @@ def main(flags):
 
     dataset = get_dataset(flags.dataset_dir, flags.val_frac)
 
-    model = Model(flags.dim)
+    model = Model(flags.dim).cuda()
     optimizer = SGD(model.parameters(), lr=flags.lr, momentum=flags.momentum)
 
     initial_epoch = 0
