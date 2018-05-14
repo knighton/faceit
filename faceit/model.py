@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 from tqdm import tqdm
@@ -152,6 +153,13 @@ def compare_points(true_points, pred_points):
     return ret_loss, ret_dist
 
 
+def mean_to_float(x):
+    x = x.mean()
+    x = x.detach().cpu().numpy()
+    x = np.asscalar(x)
+    return float(x)
+
+
 class Model(nn.Module):
     def __init__(self, k):
         super().__init__()
@@ -221,15 +229,25 @@ class Model(nn.Module):
         bbox_loss, bbox_dist = compare_points(true_bboxes, pred_bboxes)
         keypoint_loss, keypoint_dist = \
             compare_points(true_keypoints, pred_keypoints)
+        losses = faceness_loss, gender_loss, pose_loss, bbox_loss, keypoint_loss
+        extras = gender_acc, bbox_dist, keypoint_dist
+        return losses, extras
 
     def train_on_batch(self, optimizer, xx, yy_true):
         optimizer.zero_grad()
         yy_pred = self.forward(xx)
-        self.get_loss(yy_true, yy_pred)
+        losses, extras = self.get_loss(yy_true, yy_pred)
+        grads = [torch.ones(*x.shape) for x in losses]
+        torch.autograd.backward(losses, grads)
+        optimizer.step()
+        losses = [mean_to_float(x) for x in losses]
+        print(losses)
 
     def val_on_batch(self, xx, yy_true):
         yy_pred = self.forward(xx)
-        self.get_loss(yy_true, yy_pred)
+        losses, extras = self.get_loss(yy_true, yy_pred)
+        losses = [mean_to_float(x) for x in losses]
+        print(losses)
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
                      batch_size=32, verbose=2, epoch=None):
