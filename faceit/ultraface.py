@@ -16,12 +16,14 @@ def main(flags):
     keys = next(f).strip().split(',')
     for line in f:
         values = next(f).strip().split(',')
+        values[0] = int(values[0])
+        values[2:] = map(float, values[2:])
         for i in range(len(keys)):
             k = keys[i]
             v = values[i]
-            try:
-                s = '%8.3f' % float(v)
-            except:
+            if isinstance(v, float):
+                s = '%8.3f' % v
+            else:
                 s = '%8s' % v
             print('%3d %11s %s' % (i, k, s))
         break
