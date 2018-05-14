@@ -29,8 +29,8 @@ def parse_flags():
     a.add_argument('--lr', type=float, default=0.005)
     a.add_argument('--momentum', type=float, default=0.8)
     a.add_argument('--num_epochs', type=int, default=1000)
-    a.add_argument('--max_batches_per_epoch', type=int, default=4096)
-    a.add_argument('--batch_size', type=int, default=4)
+    a.add_argument('--max_batches_per_epoch', type=int, default=512)
+    a.add_argument('--batch_size', type=int, default=2)
 
     return a.parse_args()
 

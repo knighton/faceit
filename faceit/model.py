@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 from tqdm import tqdm
 
 
@@ -116,6 +117,15 @@ class Flatten(nn.Module):
         return x.view(x.shape[0], -1)
 
 
+class Scale(nn.Module):
+    def __init__(self, scale):
+        super().__init__()
+        self.scale = scale
+
+    def forward(self, x):
+        return F.tanh(x / self.scale) * self.scale
+
+
 def mean_squared_error(true, pred):
     x = true - pred
     return x * x
@@ -187,24 +197,30 @@ class Model(nn.Module):
         )
 
         self.is_face = nn.Sequential(
+            dense_bn(k, k),
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.is_male = nn.Sequential(
+            dense_bn(k, k),
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.get_pose = nn.Sequential(
+            dense_bn(k, k),
             nn.Linear(k, 3),
+            Scale(90),
         )
 
         self.get_face_bbox = nn.Sequential(
+            dense_bn(k, k),
             nn.Linear(k, 4),
         )
 
         self.get_keypoints = nn.Sequential(
+            dense_bn(k, k),
             nn.Linear(k, 21 * 2),
         )
 
@@ -242,13 +258,25 @@ class Model(nn.Module):
         torch.autograd.backward(losses, grads)
         optimizer.step()
         losses = [mean_to_float(x) for x in losses]
+        gender_acc, bbox_dist, keypoint_dist = map(mean_to_float, extras)
+        print()
         print(losses)
+        print(gender_acc)
+        print(bbox_dist)
+        print(keypoint_dist)
+        print()
 
     def val_on_batch(self, xx, yy_true):
         yy_pred = self.forward(xx)
         losses, extras = self.get_loss(yy_true, yy_pred)
         losses = [mean_to_float(x) for x in losses]
+        gender_acc, bbox_dist, keypoint_dist = map(mean_to_float, extras)
+        print()
         print(losses)
+        print(gender_acc)
+        print(bbox_dist)
+        print(keypoint_dist)
+        print()
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
                      batch_size=32, verbose=2, epoch=None):
