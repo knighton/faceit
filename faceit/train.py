@@ -3,6 +3,7 @@ import json
 import numpy as np
 import os
 from PIL import Image
+import shutil
 from torch.optim import SGD
 from tqdm import tqdm
 
@@ -22,11 +23,11 @@ def parse_flags():
     a.add_argument('--val_frac', type=float, default=0.2)
 
     # Model knobs.
-    a.add_argument('--dim', type=int, default=64)
+    a.add_argument('--dim', type=int, default=32)
 
     # Training knobs.
-    a.add_argument('--model_dir', type=str, default='data/model/')
-    a.add_argument('--lr', type=float, default=0.002)
+    a.add_argument('--chk_dir', type=str, default='data/checkpoints/')
+    a.add_argument('--lr', type=float, default=0.001)
     a.add_argument('--momentum', type=float, default=0.8)
     a.add_argument('--num_epochs', type=int, default=1000)
     a.add_argument('--max_batches_per_epoch', type=int, default=100)
@@ -83,8 +84,9 @@ def get_dataset(dataset_dir, val_frac):
 
 
 def main(flags):
-    assert not os.path.exists(flags.model_dir)
-    os.makedirs(flags.model_dir)
+    if os.path.exists(flags.chk_dir):
+        shutil.rmtree(flags.chk_dir)
+    os.makedirs(flags.chk_dir)
 
     dataset = get_dataset(flags.dataset_dir, flags.val_frac)
 
@@ -93,7 +95,8 @@ def main(flags):
 
     initial_epoch = 0
     model.fit(dataset, optimizer, initial_epoch, flags.num_epochs,
-              flags.max_batches_per_epoch, flags.batch_size, flags.verbose)
+              flags.max_batches_per_epoch, flags.batch_size, flags.chk_dir,
+              flags.verbose)
 
 
 if __name__ == '__main__':

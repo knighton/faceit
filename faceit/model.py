@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -230,22 +231,39 @@ class Model(nn.Module):
         is_faces = self.is_face(ff)
         is_males = self.is_male(ff)
         poses = self.get_pose(ff)
-        bboxes = self.get_face_bbox(ff)
-        keypoints = self.get_keypoints(ff)
+        bboxes = self.get_face_bbox(ff) * 100
+        keypoints = self.get_keypoints(ff) * 100
         return is_faces, is_males, poses, bboxes, keypoints
+
+    def get_face_loss(self, true, pred):
+        return (true - pred).abs() ** 1.5
+
+    def get_gender_loss(self, true, pred):
+        loss = binary_cross_entropy(true, pred) * 0.2
+        acc = binary_accuracy(true, pred)
+        return loss, acc
+
+    def get_pose_loss(self, true, pred):
+        return (true / 10 - pred / 10) ** 2 * 0.1
+
+    def get_bbox_loss(self, true, pred):
+        return compare_points(true, pred)
+
+    def get_keypoint_loss(self, true, pred):
+        return compare_points(true, pred)
 
     def get_loss(self, yy_true, yy_pred):
         true_is_faces, true_is_males, true_poses, true_bboxes, \
             true_keypoints = yy_true
         pred_is_faces, pred_is_males, pred_poses, pred_bboxes, \
             pred_keypoints = yy_pred
-        faceness_loss = mean_squared_error(true_is_faces, pred_is_faces)
-        gender_loss = binary_cross_entropy(true_is_males, pred_is_males)
-        gender_acc = binary_accuracy(true_is_males, pred_is_males)
-        pose_loss = mean_squared_error(true_poses, pred_poses)
-        bbox_loss, bbox_dist = compare_points(true_bboxes, pred_bboxes)
+        faceness_loss = self.get_face_loss(true_is_faces, pred_is_faces)
+        gender_loss, gender_acc = \
+            self.get_gender_loss(true_is_males, pred_is_males)
+        pose_loss = self.get_pose_loss(true_poses, pred_poses)
+        bbox_loss, bbox_dist = self.get_bbox_loss(true_bboxes, pred_bboxes)
         keypoint_loss, keypoint_dist = \
-            compare_points(true_keypoints, pred_keypoints)
+            self.get_keypoint_loss(true_keypoints, pred_keypoints)
         losses = faceness_loss, gender_loss, pose_loss, bbox_loss, keypoint_loss
         extras = gender_acc, bbox_dist, keypoint_dist
         return losses, extras
@@ -291,7 +309,7 @@ class Model(nn.Module):
         """
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
-                     batch_size=32, verbose=2, epoch=None):
+                     batch_size=32, chk_dir=None, verbose=2, epoch=None):
         each_batch = dataset.each_batch(batch_size, max_batches_per_epoch)
         total = dataset.batches_per_epoch(batch_size, max_batches_per_epoch)
         if 2 <= verbose:
@@ -326,12 +344,15 @@ class Model(nn.Module):
                 self.eval()
                 self.val_on_batch(xx, yy, val_loss_lists, val_extra_lists)
 
+        print('-' * 80)
+        if epoch is not None:
+            print('epoch: %d' % epoch)
+
         names = 'faceness', 'gender', 'pose', 'bbox', 'keypoints'
         train_losses = tuple(map(np.mean, train_loss_lists))
         train_extras = tuple(map(np.mean, train_extra_lists))
         val_losses = tuple(map(np.mean, val_loss_lists))
         val_extras = tuple(map(np.mean, val_extra_lists))
-        print('+' * 40)
         for i in range(5):
             print('loss (%s): %.3f %.3f' %
                   (names[i], train_losses[i], val_losses[i]))
@@ -339,10 +360,21 @@ class Model(nn.Module):
         names = 'gender accuracy', 'avg face bbox dist', 'avg eye dist'
         for i in range(3):
             print('%s: %.3f %.3f' % (names[i], train_extras[i], val_extras[i]))
-        print('+' * 40)
+
+        print('-' * 80)
+
+        if chk_dir:
+            t = train_losses[3]
+            v = val_losses[3]
+            d = 'epoch_%04d_%04d_%04d' % (epoch, int(t * 10000), int(v * 10000))
+            d = os.path.join(chk_dir, d)
+            os.makedirs(d)
+            f = 'model.bin'
+            f = os.path.join(d, f)
+            torch.save(self, f)
 
     def fit(self, dataset, optimizer, initial_epoch=0, num_epochs=10,
-            max_batches_per_epoch=None, batch_size=32, verbose=2):
+            max_batches_per_epoch=None, batch_size=32, chk_dir=None, verbose=2):
         for epoch in range(initial_epoch, num_epochs):
             self.fit_on_epoch(dataset, optimizer, max_batches_per_epoch,
-                              batch_size, verbose, epoch)
+                              batch_size, chk_dir, verbose, epoch)
