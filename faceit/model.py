@@ -333,7 +333,7 @@ class Model(nn.Module):
         val_extras = tuple(map(np.mean, val_extra_lists))
         print('+' * 40)
         for i in range(5):
-            print('loss (%s): .%3f %.3f' %
+            print('loss (%s): %.3f %.3f' %
                   (names[i], train_losses[i], val_losses[i]))
 
         names = 'gender_acc', 'bbox_dist', 'keypoint_dist'
