@@ -6,184 +6,9 @@ from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
 
-
-conv_bn = lambda in_dim, out_dim: nn.Sequential(
-    nn.Conv2d(in_dim, out_dim, 5, 1, 2),
-    nn.BatchNorm2d(out_dim),
-    nn.ReLU(),
-)
-
-
-conv_bn_pool = lambda in_dim, out_dim: nn.Sequential(
-    nn.Conv2d(in_dim, out_dim, 5, 2, 2),
-    nn.BatchNorm2d(out_dim),
-    nn.ReLU(),
-)
-
-
-dense_bn = lambda in_dim, out_dim: nn.Sequential(
-    nn.Linear(in_dim, out_dim),
-    nn.BatchNorm1d(out_dim),
-    nn.ReLU(),
-    nn.Dropout(),
-)
-
-
-class IsoConvBlock(nn.Module):
-    """
-    A basic spatial shape-preserving block.
-
-    Contains three paths, each multiplied by a learned weight:
-    - Skip connection
-    - 5x5 conv
-    - Gated 5x5 conv
-
-    Initialized to using just the skip connection.  At worst, we waste some
-    computation and the information just passes through the skip, but normally
-    it balances them against each other.
-    """
-
-    def __init__(self, k):
-        super().__init__()
-        self.k = k
-
-        self.conv = nn.Conv2d(k, 3 * k, 5, 1, 2)
-        self.bn1 = nn.BatchNorm2d(k)
-        # self.drop1 = nn.Dropout2d()
-        self.bn2 = nn.BatchNorm2d(k)
-        # self.drop2 = nn.Dropout2d()
-
-        weights = torch.FloatTensor([1, 0, 0])
-        self.weights = nn.Parameter(weights)
-
-    def forward(self, x):
-        t = self.conv(x)
-        k = self.k
-        conv = t[:, :k, :, :].clone()
-        conv = self.bn1(conv).clamp(min=0)
-        # conv = self.drop1(conv)
-        gate = t[:, k:2 * k, :, :].clone()
-        gate *= t[:, 2 * k:, :, :].sigmoid()
-        gate = self.bn2(gate).clamp(min=0)
-        # gate = self.drop2(gate)
-        w = self.weights
-        return w[0] * x + w[1] * conv + w[2] * gate
-
-
-class IsoDenseBlock(nn.Module):
-    """
-    A basic  dense block.
-
-    Contains four paths, each multiplied by a learned weight:
-    - Skip connection
-    - Dense
-    - Gated dense #1
-    - Gated dense #2
-
-    Initialized to using just the skip connection.  At worst, we waste some
-    computation and the information just passes through the skip, but normally
-    it balances them against each other.
-    """
-
-    def __init__(self, k):
-        super().__init__()
-        self.k = k
-
-        self.dense = nn.Linear(k, 5 * k)
-        self.bn1 = nn.BatchNorm1d(k)
-        self.drop1 = nn.Dropout()
-        self.bn2 = nn.BatchNorm1d(k)
-        self.drop2 = nn.Dropout()
-        self.bn3 = nn.BatchNorm1d(k)
-        self.drop3 = nn.Dropout()
-
-        weights = torch.FloatTensor([1, 0, 0, 0])
-        self.weights = nn.Parameter(weights)
-
-    def forward(self, x):
-        t = self.dense(x)
-        k = self.k
-
-        one = t[:, :k].clone()
-        one = self.bn1(one)
-        one = self.drop1(one)
-        one = one.clamp(min=0)
-
-        two = t[:, k:k * 2] * t[:, k * 2:k * 3].sigmoid()
-        two = self.bn2(two)
-        two = self.drop2(two)
-        two = two.clamp(min=0)
-
-        three = t[:, k * 2:k * 3] * t[:, k * 4:].sigmoid()
-        three = self.bn3(three)
-        three = self.drop3(three)
-        three = three.clamp(min=0)
-
-        w = self.weights
-        return w[0] * x + w[1] * one + w[2] * two + w[3] * three
-
-
-class ReduceBlock(nn.Module):
-    """
-    A basic 2x2 pooling block.
-
-    Contains four paths, each multiplied by a learned weight:
-    - Average pooling
-    - Max pooling
-    - Strided 5x5 conv
-    - Gated strided 5x5 conv
-
-    Initialized to half avg pooling, half max pooling.  At worst, it just does
-    pooling.
-    """
-
-    def __init__(self, k):
-        super().__init__()
-        self.k = k
-
-        self.avg_pool = nn.AvgPool2d(2)
-        self.max_pool = nn.MaxPool2d(2)
-        self.conv = nn.Conv2d(k, 3 * k, 5, 2, 2)
-        self.bn1 = nn.BatchNorm2d(k)
-        self.drop1 = nn.Dropout2d()
-        self.bn2 = nn.BatchNorm2d(k)
-        self.drop2 = nn.Dropout2d()
-
-        weights = torch.FloatTensor([0.5, 0.5, 0, 0])
-        self.weights = nn.Parameter(weights)
-
-    def forward(self, x):
-        avg_pool = self.avg_pool(x)
-        max_pool = self.max_pool(x)
-        t = self.conv(x)
-        k = self.k
-        conv = t[:, :k, :, :].clone()
-        conv = self.bn1(conv).clamp(min=0)
-        conv = self.drop1(conv)
-        gate = t[:, k:2 * k, :, :] * t[:, 2 * k:, :, :].sigmoid()
-        gate = gate.clone()
-        gate = self.bn2(gate).clamp(min=0)
-        gate = self.drop2(gate)
-        w = self.weights
-        return w[0] * avg_pool + w[1] * max_pool + w[2] * conv + w[3] * gate
-
-
-class Flatten(nn.Module):
-    """
-    Flattens the input tensor, returning a view.
-    """
-
-    def forward(self, x):
-        return x.view(x.shape[0], -1)
-
-
-class Scale(nn.Module):
-    def __init__(self, scale):
-        super().__init__()
-        self.scale = scale
-
-    def forward(self, x):
-        return F.tanh(x / self.scale) * self.scale
+from blox import \
+    conv_bn, conv_bn_pool, dense_bn, IsoConvBlock, IsoDenseBlock, ReduceBlock, \
+    Flatten, Scale
 
 
 def mean_squared_error(true, pred):
@@ -204,6 +29,10 @@ def binary_accuracy(true, pred):
 
 def dist_to_loss(dist):
     return (dist / 32).tanh()
+
+
+def dist_to_loss(dist):
+    return dist ** 0.5
 
 
 def compare_points(true_points, pred_points):
@@ -236,61 +65,54 @@ class Model(nn.Module):
         super().__init__()
 
         self.features = nn.Sequential(
-            conv_bn_pool(3, k),  # 128 -> 32.
+            conv_bn_pool(3, k),
+            ReduceBlock(k),
             IsoConvBlock(k),
-            ReduceBlock(k),  # 64 -> 32.
+            ReduceBlock(k),
             IsoConvBlock(k),
-            IsoConvBlock(k),
-            ReduceBlock(k),  # 32 -> 16.
-            IsoConvBlock(k),
-            IsoConvBlock(k),
-            ReduceBlock(k),  # 16 -> 8.
+            ReduceBlock(k),
             IsoConvBlock(k),
             IsoConvBlock(k),
-            IsoConvBlock(k),
-            ReduceBlock(k),  # 8 -> 4.
-            IsoConvBlock(k),
+            ReduceBlock(k),
             IsoConvBlock(k),
             IsoConvBlock(k),
-            ReduceBlock(k),  # 4 -> 2.
-            IsoConvBlock(k),
-            IsoConvBlock(k),
-            IsoConvBlock(k),
-            IsoConvBlock(k),
-            Flatten(),
-            IsoDenseBlock(2 * 2 * k),
-            IsoDenseBlock(2 * 2 * k),
-            IsoDenseBlock(2 * 2 * k),
-            IsoDenseBlock(2 * 2 * k),
-            dense_bn(2 * 2 * k, k),
         )
 
         self.is_face = nn.Sequential(
-            dense_bn(k, k),
+            ReduceBlock(k),
+            ReduceBlock(k),
+            Flatten(),
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.is_male = nn.Sequential(
-            dense_bn(k, k),
+            ReduceBlock(k),
+            ReduceBlock(k),
+            Flatten(),
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.get_pose = nn.Sequential(
-            dense_bn(k, k),
+            ReduceBlock(k),
+            ReduceBlock(k),
+            Flatten(),
             nn.Linear(k, 3),
-            Scale(90),
         )
 
         self.get_face_bbox = nn.Sequential(
-            dense_bn(k, k),
+            ReduceBlock(k),
+            ReduceBlock(k),
+            Flatten(),
             nn.Linear(k, 4),
         )
 
         self.get_keypoints = nn.Sequential(
-            dense_bn(k, k),
-            nn.Linear(k, 21 * 2),
+            ReduceBlock(k),
+            ReduceBlock(k),
+            Flatten(),
+            nn.Linear(k, 4),
         )
 
     def forward(self, xx):
@@ -299,38 +121,21 @@ class Model(nn.Module):
         is_faces = self.is_face(ff)
         is_males = self.is_male(ff)
         poses = self.get_pose(ff)
-        bboxes = self.get_face_bbox(ff) * 100
-        keypoints = self.get_keypoints(ff) * 100
-
-        """
-        if not self.training:
-            im = weird.detach().cpu().numpy()
-            im = im.transpose([0, 2, 3, 1])
-            im -= im.mean()
-            im /= im.std()
-            im = im.clip(min=-2, max=2)
-            im = np.abs(im)
-            im /= 2
-            im *= 255
-            im = im.astype('uint8')
-            n = np.random.randint(10000)
-            for i in range(len(im)):
-                sample = Image.fromarray(im[i])
-                sample.save('wtf_%d_%d.jpg' % (n, i))
-        """
+        bboxes = self.get_face_bbox(ff)
+        keypoints = self.get_keypoints(ff)
 
         return is_faces, is_males, poses, bboxes, keypoints
 
     def get_face_loss(self, true, pred):
-        return (true - pred).abs() ** 1.5
+        return (true - pred) ** 2
 
     def get_gender_loss(self, true, pred):
-        loss = binary_cross_entropy(true, pred) * 0.2
+        loss = binary_cross_entropy(true, pred)
         acc = binary_accuracy(true, pred)
         return loss, acc
 
     def get_pose_loss(self, true, pred):
-        return (true / 10 - pred / 10) ** 2 * 0.1
+        return (true - pred).abs()
 
     def get_bbox_loss(self, true, pred):
         return compare_points(true, pred)
@@ -367,14 +172,6 @@ class Model(nn.Module):
             loss_lists[i].append(loss)
         for i, extra in enumerate(extras):
             extra_lists[i].append(extra)
-        """
-        print()
-        print(losses)
-        print(gender_acc)
-        print(bbox_dist)
-        print(keypoint_dist)
-        print()
-        """
 
     def val_on_batch(self, xx, yy_true, loss_lists, extra_lists):
         yy_pred = self.forward(xx)
@@ -385,17 +182,9 @@ class Model(nn.Module):
             loss_lists[i].append(loss)
         for i, extra in enumerate(extras):
             extra_lists[i].append(extra)
-        """
-        print()
-        print(losses)
-        print(gender_acc)
-        print(bbox_dist)
-        print(keypoint_dist)
-        print()
-        """
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
-                     batch_size=32, chk_dir=None, verbose=2, epoch=None):
+                     batch_size=32, save_dir=None, verbose=2, epoch=None):
         each_batch = dataset.each_batch(batch_size, max_batches_per_epoch)
         total = dataset.batches_per_epoch(batch_size, max_batches_per_epoch)
         if 2 <= verbose:
@@ -405,7 +194,13 @@ class Model(nn.Module):
         train_extra_lists = [[] for i in range(3)]
         val_loss_lists = [[] for i in range(5)]
         val_extra_lists = [[] for i in range(3)]
+        demo_xx = []
+        demo_yy = []
         for is_training, xx, yy in each_batch:
+            if not is_training and np.random.uniform() < 0.2:
+                demo_xx.append(xx)
+                demo_yy.append(yy)
+
             x, = xx
             x = x.astype('float32')
             x /= 127.5
@@ -430,6 +225,7 @@ class Model(nn.Module):
                 self.eval()
                 self.val_on_batch(xx, yy, val_loss_lists, val_extra_lists)
 
+        print()
         print('-' * 80)
         if epoch is not None:
             print('epoch: %d' % epoch)
@@ -448,6 +244,7 @@ class Model(nn.Module):
             print('%s: %.3f %.3f' % (names[i], train_extras[i], val_extras[i]))
 
         print('-' * 80)
+        print()
 
         print('^' * 40)
         tt = []
@@ -471,19 +268,70 @@ class Model(nn.Module):
             print('[%s]' % t, ' '.join(map(lambda x: '%.3f' % x, w)))
         print('^' * 40)
 
-        if chk_dir:
+        if save_dir:
             t = np.mean(train_losses)
             v = np.mean(val_losses)
-            d = 'epoch_%04d_%04d_%04d' % (epoch, int(t * 10000), int(v * 10000))
+            d = 'epoch_%04d_%04d_%04d' % (epoch, int(t * 1000), int(v * 1000))
             print('>', d)
-            d = os.path.join(chk_dir, d)
+            d = os.path.join(save_dir, d)
             os.makedirs(d)
+
             f = 'model.bin'
             f = os.path.join(d, f)
             torch.save(self, f)
 
+            self.eval()
+            n = len(demo_xx)
+            print('demo batches:', n)
+            for i in range(n):
+                xx = demo_xx[i]
+                yy = demo_yy[i]
+
+                x, = xx
+                crop = x.copy()
+                x = x.astype('float32')
+                x /= 127.5
+                x -= 1
+                x = x.transpose([0, 3, 1, 2])
+                x = torch.from_numpy(x)
+                xx = [x]
+
+                is_face, is_male, pose, bbox, keypoint = yy
+                is_face = torch.from_numpy(is_face)
+                is_male = torch.from_numpy(is_male)
+                pose = torch.from_numpy(pose)
+                bbox = torch.from_numpy(bbox)
+                keypoint = torch.from_numpy(keypoint)
+                yy = is_face, is_male, pose, bbox, keypoint
+
+                yy_pred = self.forward(xx)
+                pred_bbox = yy_pred[3].detach().cpu().numpy()
+                pred_bbox = pred_bbox.clip(0, 127).astype('int32')
+                pred_keypoint = yy_pred[4].detach().cpu().numpy()
+                pred_keypoint = pred_keypoint.clip(0, 127).astype('int32')
+
+                for j in range(len(pred_bbox)):
+                    minx, miny, maxx, maxy = pred_bbox[j]
+                    crop[j, miny, minx, 1] = 255
+                    crop[j, maxy, maxx, 2] = 255
+                    if minx < maxx and miny < maxy:
+                        crop[j, miny:maxy, minx:maxx, :] //= 4
+
+                for j in range(2):
+                    x = pred_keypoint[:, j * 2]
+                    y = pred_keypoint[:, j * 2 + 1]
+                    for k in range(len(pred_keypoint)):
+                        crop[k, y[k], x[k], 0] = 255
+
+                for j in range(len(pred_keypoint)):
+                    im = Image.fromarray(crop[j])
+                    f = 'demo_%04d_%04d.jpg' % (i, j)
+                    f = os.path.join(d, f)
+                    im.save(f)
+
     def fit(self, dataset, optimizer, initial_epoch=0, num_epochs=10,
-            max_batches_per_epoch=None, batch_size=32, chk_dir=None, verbose=2):
+            max_batches_per_epoch=None, batch_size=32, save_dir=None,
+            verbose=2):
         for epoch in range(initial_epoch, num_epochs):
             self.fit_on_epoch(dataset, optimizer, max_batches_per_epoch,
-                              batch_size, chk_dir, verbose, epoch)
+                              batch_size, save_dir, verbose, epoch)

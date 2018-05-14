@@ -23,7 +23,7 @@ def parse_flags():
     a.add_argument('--val_frac', type=float, default=0.2)
 
     # Model knobs.
-    a.add_argument('--dim', type=int, default=32)
+    a.add_argument('--dim', type=int, default=128)
 
     # Training knobs.
     a.add_argument('--chk_dir', type=str, default='data/checkpoints/')
