@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from tqdm import tqdm
 
 
 conv_bn_pool = lambda in_dim, out_dim: nn.Sequential(
@@ -42,7 +43,7 @@ class IsoBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_dim)
         self.drop2 = nn.Dropout2d()
 
-        weights = torch.cuda.FloatTensor([1, 0, 0])
+        weights = torch.FloatTensor([1, 0, 0])
         self.weights = nn.Parameter(weights)
 
     def forward(self, x):
@@ -85,7 +86,7 @@ class ReduceBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_dim)
         self.drop2 = nn.Dropout2d()
 
-        weights = torch.cuda.FloatTensor([0.5, 0.5, 0, 0])
+        weights = torch.FloatTensor([0.5, 0.5, 0, 0])
         self.weights = nn.Parameter(weights)
 
     def forward(self, x):
@@ -119,19 +120,19 @@ class Model(nn.Module):
 
         self.features = nn.Sequential(
             conv_bn_pool(3, k),  # 128 -> 64.
-            ReduceBlock(k),  # 64 -> 32.
-            IsoBlock(k),
-            ReduceBlock(k),  # 32 -> 16.
-            IsoBlock(k),
-            ReduceBlock(k),  # 16 -> 8.
-            IsoBlock(k),
-            ReduceBlock(k),  # 8 -> 4.
-            IsoBlock(k),
-            IsoBlock(k),
-            ReduceBlock(k),  # 4 -> 2.
-            IsoBlock(k),
-            IsoBlock(k),
-            IsoBlock(k),
+            ReduceBlock(k, k),  # 64 -> 32.
+            IsoBlock(k, k),
+            ReduceBlock(k, k),  # 32 -> 16.
+            IsoBlock(k, k),
+            ReduceBlock(k, k),  # 16 -> 8.
+            IsoBlock(k, k),
+            ReduceBlock(k, k),  # 8 -> 4.
+            IsoBlock(k, k),
+            IsoBlock(k, k),
+            ReduceBlock(k, k),  # 4 -> 2.
+            IsoBlock(k, k),
+            IsoBlock(k, k),
+            IsoBlock(k, k),
             Flatten(),
             dense_bn(2 * 2 * k, 2 * 2 * k),
             dense_bn(2 * 2 * k, 2 * 2 * k),
@@ -168,3 +169,19 @@ class Model(nn.Module):
         bboxes = self.get_face_bbox(ff)
         keypoints = self.get_keypoints(ff)
         return is_faces, is_males, poses, bboxes, keypoints
+
+    def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
+                     batch_size=32, verbose=2, epoch=None):
+        each_batch = dataset.each_batch(batch_size, max_batches_per_epoch)
+        total = dataset.batches_per_epoch(batch_size, max_batches_per_epoch)
+        if 2 <= verbose:
+            each_batch = tqdm(each_batch, total=total, leave=False)
+
+        for is_training, xx, yy in each_batch:
+            print(is_training, len(xx), len(yy))
+
+    def fit(self, dataset, optimizer, initial_epoch=0, num_epochs=10,
+            max_batches_per_epoch=None, batch_size=32, verbose=2):
+        for epoch in range(initial_epoch, num_epochs):
+            self.fit_on_epoch(dataset, optimizer, max_batches_per_epoch,
+                              batch_size, verbose, epoch)

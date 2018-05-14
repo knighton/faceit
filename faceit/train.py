@@ -3,24 +3,40 @@ import json
 import numpy as np
 import os
 from PIL import Image
+from torch.optim import SGD
 from tqdm import tqdm
 
 from dataset import Dataset
+from model import Model
 from util import load_dataset
 
 
 def parse_flags():
     a = ArgumentParser()
-    a.add_argument('--in_dir', type=str, default='data/proc/')
-    a.add_argument('--out_dir', type=str, default='data/model/')
+
+    # General knobs.
+    a.add_argument('--verbose', type=int, default=2)
+
+    # Dataset knobs.
+    a.add_argument('--dataset_dir', type=str, default='data/proc/')
     a.add_argument('--val_frac', type=float, default=0.2)
+
+    # Model knobs.
+    a.add_argument('--dim', type=int, default=64)
+
+    # Training knobs.
+    a.add_argument('--model_dir', type=str, default='data/model/')
+    a.add_argument('--lr', type=float, default=0.005)
+    a.add_argument('--momentum', type=float, default=0.8)
+    a.add_argument('--num_epochs', type=int, default=1000)
+    a.add_argument('--max_batches_per_epoch', type=int, default=4096)
+    a.add_argument('--batch_size', type=int, default=4)
+
     return a.parse_args()
 
 
-def main(flags):
-    assert not os.path.exists(flags.out_dir)
-    os.makedirs(flags.out_dir)
-    crops, infos = load_dataset(flags.in_dir)
+def get_dataset(dataset_dir, val_frac):
+    crops, infos = load_dataset(dataset_dir)
     print('crops:', crops.shape)
     print('infos:', infos.shape)
 
@@ -45,7 +61,7 @@ def main(flags):
 
     xx = [crops]
     yy = [is_face, gender, pose, bbox, keypoints]
-    dataset = Dataset.split(xx, yy, flags.val_frac)
+    dataset = Dataset.split(xx, yy, val_frac)
     print('split:', dataset.train.samples_per_epoch,
           dataset.val.samples_per_epoch)
     print('x:')
@@ -56,6 +72,22 @@ def main(flags):
     print('- names:', ['isface', 'gender', 'pose', 'bbox', 'keypoints'])
     print('- shapes:', dataset.y_sample_shapes)
     print('- dtypes:', dataset.y_dtypes)
+
+    return dataset
+
+
+def main(flags):
+    assert not os.path.exists(flags.model_dir)
+    os.makedirs(flags.model_dir)
+
+    dataset = get_dataset(flags.dataset_dir, flags.val_frac)
+
+    model = Model(flags.dim)
+    optimizer = SGD(model.parameters(), lr=flags.lr, momentum=flags.momentum)
+
+    initial_epoch = 0
+    model.fit(dataset, optimizer, initial_epoch, flags.num_epochs,
+              flags.max_batches_per_epoch, flags.batch_size, flags.verbose)
 
 
 if __name__ == '__main__':
