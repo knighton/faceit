@@ -29,9 +29,9 @@ def parse_flags():
     a.add_argument('--chk_dir', type=str, default='data/checkpoints/')
     a.add_argument('--lr', type=float, default=0.001)
     a.add_argument('--momentum', type=float, default=0.8)
-    a.add_argument('--num_epochs', type=int, default=1000)
-    a.add_argument('--max_batches_per_epoch', type=int, default=100)
-    a.add_argument('--batch_size', type=int, default=8)
+    a.add_argument('--num_epochs', type=int, default=10000)
+    a.add_argument('--max_batches_per_epoch', type=int, default=32)
+    a.add_argument('--batch_size', type=int, default=16)
 
     return a.parse_args()
 

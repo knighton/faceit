@@ -1,9 +1,17 @@
 import numpy as np
 import os
+from PIL import Image
 import torch
 from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
+
+
+conv_bn = lambda in_dim, out_dim: nn.Sequential(
+    nn.Conv2d(in_dim, out_dim, 5, 1, 2),
+    nn.BatchNorm2d(out_dim),
+    nn.ReLU(),
+)
 
 
 conv_bn_pool = lambda in_dim, out_dim: nn.Sequential(
@@ -21,7 +29,7 @@ dense_bn = lambda in_dim, out_dim: nn.Sequential(
 )
 
 
-class IsoBlock(nn.Module):
+class IsoConvBlock(nn.Module):
     """
     A basic spatial shape-preserving block.
 
@@ -35,32 +43,84 @@ class IsoBlock(nn.Module):
     it balances them against each other.
     """
 
-    def __init__(self, in_dim, out_dim):
+    def __init__(self, k):
         super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
+        self.k = k
 
-        self.conv = nn.Conv2d(in_dim, 3 * out_dim, 5, 1, 2)
-        self.bn1 = nn.BatchNorm2d(out_dim)
-        self.drop1 = nn.Dropout2d()
-        self.bn2 = nn.BatchNorm2d(out_dim)
-        self.drop2 = nn.Dropout2d()
+        self.conv = nn.Conv2d(k, 3 * k, 5, 1, 2)
+        self.bn1 = nn.BatchNorm2d(k)
+        # self.drop1 = nn.Dropout2d()
+        self.bn2 = nn.BatchNorm2d(k)
+        # self.drop2 = nn.Dropout2d()
 
         weights = torch.FloatTensor([1, 0, 0])
         self.weights = nn.Parameter(weights)
 
     def forward(self, x):
         t = self.conv(x)
-        k = self.out_dim
+        k = self.k
         conv = t[:, :k, :, :].clone()
         conv = self.bn1(conv).clamp(min=0)
-        conv = self.drop1(conv)
+        # conv = self.drop1(conv)
         gate = t[:, k:2 * k, :, :].clone()
         gate *= t[:, 2 * k:, :, :].sigmoid()
         gate = self.bn2(gate).clamp(min=0)
-        gate = self.drop2(gate)
+        # gate = self.drop2(gate)
         w = self.weights
         return w[0] * x + w[1] * conv + w[2] * gate
+
+
+class IsoDenseBlock(nn.Module):
+    """
+    A basic  dense block.
+
+    Contains four paths, each multiplied by a learned weight:
+    - Skip connection
+    - Dense
+    - Gated dense #1
+    - Gated dense #2
+
+    Initialized to using just the skip connection.  At worst, we waste some
+    computation and the information just passes through the skip, but normally
+    it balances them against each other.
+    """
+
+    def __init__(self, k):
+        super().__init__()
+        self.k = k
+
+        self.dense = nn.Linear(k, 5 * k)
+        self.bn1 = nn.BatchNorm1d(k)
+        self.drop1 = nn.Dropout()
+        self.bn2 = nn.BatchNorm1d(k)
+        self.drop2 = nn.Dropout()
+        self.bn3 = nn.BatchNorm1d(k)
+        self.drop3 = nn.Dropout()
+
+        weights = torch.FloatTensor([1, 0, 0, 0])
+        self.weights = nn.Parameter(weights)
+
+    def forward(self, x):
+        t = self.dense(x)
+        k = self.k
+
+        one = t[:, :k].clone()
+        one = self.bn1(one)
+        one = self.drop1(one)
+        one = one.clamp(min=0)
+
+        two = t[:, k:k * 2] * t[:, k * 2:k * 3].sigmoid()
+        two = self.bn2(two)
+        two = self.drop2(two)
+        two = two.clamp(min=0)
+
+        three = t[:, k * 2:k * 3] * t[:, k * 4:].sigmoid()
+        three = self.bn3(three)
+        three = self.drop3(three)
+        three = three.clamp(min=0)
+
+        w = self.weights
+        return w[0] * x + w[1] * one + w[2] * two + w[3] * three
 
 
 class ReduceBlock(nn.Module):
@@ -77,17 +137,16 @@ class ReduceBlock(nn.Module):
     pooling.
     """
 
-    def __init__(self, in_dim, out_dim):
+    def __init__(self, k):
         super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
+        self.k = k
 
         self.avg_pool = nn.AvgPool2d(2)
         self.max_pool = nn.MaxPool2d(2)
-        self.conv = nn.Conv2d(in_dim, 3 * out_dim, 5, 2, 2)
-        self.bn1 = nn.BatchNorm2d(out_dim)
+        self.conv = nn.Conv2d(k, 3 * k, 5, 2, 2)
+        self.bn1 = nn.BatchNorm2d(k)
         self.drop1 = nn.Dropout2d()
-        self.bn2 = nn.BatchNorm2d(out_dim)
+        self.bn2 = nn.BatchNorm2d(k)
         self.drop2 = nn.Dropout2d()
 
         weights = torch.FloatTensor([0.5, 0.5, 0, 0])
@@ -97,7 +156,7 @@ class ReduceBlock(nn.Module):
         avg_pool = self.avg_pool(x)
         max_pool = self.max_pool(x)
         t = self.conv(x)
-        k = self.out_dim
+        k = self.k
         conv = t[:, :k, :, :].clone()
         conv = self.bn1(conv).clamp(min=0)
         conv = self.drop1(conv)
@@ -177,23 +236,32 @@ class Model(nn.Module):
         super().__init__()
 
         self.features = nn.Sequential(
-            conv_bn_pool(3, k),  # 128 -> 64.
-            ReduceBlock(k, k),  # 64 -> 32.
-            IsoBlock(k, k),
-            ReduceBlock(k, k),  # 32 -> 16.
-            IsoBlock(k, k),
-            ReduceBlock(k, k),  # 16 -> 8.
-            IsoBlock(k, k),
-            ReduceBlock(k, k),  # 8 -> 4.
-            IsoBlock(k, k),
-            IsoBlock(k, k),
-            ReduceBlock(k, k),  # 4 -> 2.
-            IsoBlock(k, k),
-            IsoBlock(k, k),
-            IsoBlock(k, k),
+            conv_bn_pool(3, k),  # 128 -> 32.
+            IsoConvBlock(k),
+            ReduceBlock(k),  # 64 -> 32.
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            ReduceBlock(k),  # 32 -> 16.
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            ReduceBlock(k),  # 16 -> 8.
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            ReduceBlock(k),  # 8 -> 4.
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            ReduceBlock(k),  # 4 -> 2.
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
             Flatten(),
-            dense_bn(2 * 2 * k, 2 * 2 * k),
-            dense_bn(2 * 2 * k, 2 * 2 * k),
+            IsoDenseBlock(2 * 2 * k),
+            IsoDenseBlock(2 * 2 * k),
+            IsoDenseBlock(2 * 2 * k),
+            IsoDenseBlock(2 * 2 * k),
             dense_bn(2 * 2 * k, k),
         )
 
@@ -233,6 +301,24 @@ class Model(nn.Module):
         poses = self.get_pose(ff)
         bboxes = self.get_face_bbox(ff) * 100
         keypoints = self.get_keypoints(ff) * 100
+
+        """
+        if not self.training:
+            im = weird.detach().cpu().numpy()
+            im = im.transpose([0, 2, 3, 1])
+            im -= im.mean()
+            im /= im.std()
+            im = im.clip(min=-2, max=2)
+            im = np.abs(im)
+            im /= 2
+            im *= 255
+            im = im.astype('uint8')
+            n = np.random.randint(10000)
+            for i in range(len(im)):
+                sample = Image.fromarray(im[i])
+                sample.save('wtf_%d_%d.jpg' % (n, i))
+        """
+
         return is_faces, is_males, poses, bboxes, keypoints
 
     def get_face_loss(self, true, pred):
@@ -362,6 +448,28 @@ class Model(nn.Module):
             print('%s: %.3f %.3f' % (names[i], train_extras[i], val_extras[i]))
 
         print('-' * 80)
+
+        print('^' * 40)
+        tt = []
+        ww = []
+        for layer in self.features:
+            if isinstance(layer, ReduceBlock):
+                tt.append('reduce-conv')
+                w = layer.weights
+                ww.append(w)
+            elif isinstance(layer, IsoConvBlock):
+                tt.append('iso-conv')
+                w = layer.weights
+                ww.append(w)
+            elif isinstance(layer, IsoDenseBlock):
+                tt.append('iso-dense')
+                w = layer.weights
+                ww.append(w)
+        for t, w in zip(tt, ww):
+            w = w.detach().cpu().numpy()
+            w = list(map(float, w))
+            print('[%s]' % t, ' '.join(map(lambda x: '%.3f' % x, w)))
+        print('^' * 40)
 
         if chk_dir:
             t = np.mean(train_losses)
