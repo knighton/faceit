@@ -26,11 +26,11 @@ def parse_flags():
 
     # Training knobs.
     a.add_argument('--model_dir', type=str, default='data/model/')
-    a.add_argument('--lr', type=float, default=0.005)
+    a.add_argument('--lr', type=float, default=0.002)
     a.add_argument('--momentum', type=float, default=0.8)
     a.add_argument('--num_epochs', type=int, default=1000)
-    a.add_argument('--max_batches_per_epoch', type=int, default=128)
-    a.add_argument('--batch_size', type=int, default=2)
+    a.add_argument('--max_batches_per_epoch', type=int, default=100)
+    a.add_argument('--batch_size', type=int, default=8)
 
     return a.parse_args()
 
@@ -57,7 +57,13 @@ def get_dataset(dataset_dir, val_frac):
     is_face = np.expand_dims(is_face, 1)
     print('faceness:', is_face.mean(), is_face.std(), is_face.min(),
           is_face.max())
-    keypoints = infos[:, 8:]
+
+    keypoints = np.zeros((infos.shape[0], 4), infos.dtype)
+    keypoints[:, 0] = infos[:, 8 + 7 * 2]
+    keypoints[:, 1] = infos[:, 8 + 7 * 2 + 1]
+    keypoints[:, 2] = infos[:, 8 + 10 * 2]
+    keypoints[:, 3] = infos[:, 8 + 10 * 2 + 1]
+    print('keypoints:', keypoints.shape)
 
     xx = [crops]
     yy = [is_face, gender, pose, bbox, keypoints]

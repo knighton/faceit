@@ -336,7 +336,7 @@ class Model(nn.Module):
             print('loss (%s): %.3f %.3f' %
                   (names[i], train_losses[i], val_losses[i]))
 
-        names = 'gender_acc', 'bbox_dist', 'keypoint_dist'
+        names = 'gender accuracy', 'avg face bbox dist', 'avg eye dist'
         for i in range(3):
             print('%s: %.3f %.3f' % (names[i], train_extras[i], val_extras[i]))
         print('+' * 40)
