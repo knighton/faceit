@@ -121,8 +121,6 @@ def main(flags):
 
     np.random.shuffle(dd)
 
-    dd = dd[:5000]
-
     crops = []
     infos = []
     for d in tqdm(dd):
