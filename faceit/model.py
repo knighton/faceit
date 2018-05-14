@@ -122,6 +122,7 @@ def mean_squared_error(true, pred):
 
 
 def binary_cross_entropy(true, pred):
+    pred = pred.clamp(1e-5, 1 - 1e-5)
     return -true * pred.log() - (1 - true) * (1 - pred).log()
 
 
@@ -132,7 +133,7 @@ def binary_accuracy(true, pred):
 
 
 def dist_to_loss(dist):
-    return (dist / 10).tanh()
+    return (dist / 32).tanh()
 
 
 def compare_points(true_points, pred_points):
