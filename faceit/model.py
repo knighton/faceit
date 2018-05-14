@@ -115,6 +115,43 @@ class Flatten(nn.Module):
         return x.view(x.shape[0], -1)
 
 
+def mean_squared_error(true, pred):
+    x = true - pred
+    return x * x
+
+
+def binary_cross_entropy(true, pred):
+    return -true * pred.log() - (1 - true) * (1 - pred).log()
+
+
+def binary_accuracy(true, pred):
+    true = 0.5 < true
+    pred = 0.5 < pred
+    return (true == pred).type(torch.float32).mean()
+
+
+def dist_to_loss(dist):
+    return (dist / 10).tanh()
+
+
+def compare_points(true_points, pred_points):
+    assert not true_points.shape[1] % 2
+    num_points = true_points.shape[1] // 2
+    ret_loss = torch.zeros(true_points.shape[0], num_points)
+    ret_dist = torch.zeros(true_points.shape[0], num_points)
+    for i in range(num_points):
+        truex = true_points[:, i * 2 + 0]
+        predx = pred_points[:, i * 2 + 0]
+        distx = truex - predx
+        truey = true_points[:, i * 2 + 1]
+        predy = pred_points[:, i * 2 + 1]
+        disty = truey - predy
+        dist = (distx * distx + disty * disty) ** 0.5
+        ret_dist[:, i] = dist
+        ret_loss[:, i] = dist_to_loss(dist)
+    return ret_loss, ret_dist
+
+
 class Model(nn.Module):
     def __init__(self, k):
         super().__init__()
@@ -172,12 +209,27 @@ class Model(nn.Module):
         keypoints = self.get_keypoints(ff)
         return is_faces, is_males, poses, bboxes, keypoints
 
+    def get_loss(self, yy_true, yy_pred):
+        true_is_faces, true_is_males, true_poses, true_bboxes, \
+            true_keypoints = yy_true
+        pred_is_faces, pred_is_males, pred_poses, pred_bboxes, \
+            pred_keypoints = yy_pred
+        faceness_loss = mean_squared_error(true_is_faces, pred_is_faces)
+        gender_loss = binary_cross_entropy(true_is_males, pred_is_males)
+        gender_acc = binary_accuracy(true_is_males, pred_is_males)
+        pose_loss = mean_squared_error(true_poses, pred_poses)
+        bbox_loss, bbox_dist = compare_points(true_bboxes, pred_bboxes)
+        keypoint_loss, keypoint_dist = \
+            compare_points(true_keypoints, pred_keypoints)
+
     def train_on_batch(self, optimizer, xx, yy_true):
         optimizer.zero_grad()
         yy_pred = self.forward(xx)
+        self.get_loss(yy_true, yy_pred)
 
-    def val_on_batch(self, xx, yy):
+    def val_on_batch(self, xx, yy_true):
         yy_pred = self.forward(xx)
+        self.get_loss(yy_true, yy_pred)
 
     def fit_on_epoch(self, dataset, optimizer, max_batches_per_epoch=None,
                      batch_size=32, verbose=2, epoch=None):
