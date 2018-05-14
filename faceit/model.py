@@ -364,9 +364,10 @@ class Model(nn.Module):
         print('-' * 80)
 
         if chk_dir:
-            t = train_losses[3]
-            v = val_losses[3]
+            t = np.mean(train_losses)
+            v = np.mean(val_losses)
             d = 'epoch_%04d_%04d_%04d' % (epoch, int(t * 10000), int(v * 10000))
+            print('>', d)
             d = os.path.join(chk_dir, d)
             os.makedirs(d)
             f = 'model.bin'
