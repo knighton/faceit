@@ -332,13 +332,15 @@ class Model(nn.Module):
                     crop[j, miny, minx, 1] = 255
                     crop[j, maxy, maxx, 2] = 255
                     if minx < maxx and miny < maxy:
-                        crop[j, miny:maxy, minx:maxx, :] //= 4
+                        crop[j, miny:maxy, minx:maxx, :] //= 2
 
                 for j in range(2):
                     x = pred_keypoint[:, j * 2]
                     y = pred_keypoint[:, j * 2 + 1]
                     for k in range(len(pred_keypoint)):
-                        crop[k, y[k], x[k], 0] = 255
+                        if 0 <= y[k] < 128 and 0 <= x[k] < 128:
+                            crop[k, y[k] - 2:y[k] + 1,
+                                 x[k] - 2:x[k] + 1, :] = 255
 
                 for j in range(len(pred_keypoint)):
                     im = Image.fromarray(crop[j])
