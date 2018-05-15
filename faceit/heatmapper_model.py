@@ -20,13 +20,19 @@ class HeatmapperModel(nn.Module):
     def __init__(self, k):
         super().__init__()
         self.seq = nn.Sequential(
-            conv_bn_pool(3, k),
-            ReduceBlock(k),
-            ReduceBlock(k),
+            conv_bn_pool(3, k),  # 128 -> 64.
+            ReduceBlock(k),  # 64 -> 32.
+            ReduceBlock(k),  # 32 -> 16.
+            ReduceBlock(k),  # 16 -> 8.
+
             IsoConvBlock(k),
-            conv_t_bn(k, k),
-            conv_t_bn(k, k),
-            conv_t_bn(k, 1),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+
+            conv_t_bn(k, k),  # 8 -> 16.
+            conv_t_bn(k, k),  # 16 -> 32.
+            conv_t_bn(k, k),  # 32 -> 64.
+            conv_t_bn(k, 1),  # 64 -> 128.
         )
 
     def forward(self, clips):
@@ -59,13 +65,16 @@ class HeatmapperModel(nn.Module):
         if 2 <= verbose:
             each_batch = tqdm(each_batch, total=total, leave=False)
 
+        demo_orig_xx = []
+        demo_torch_xx = []
+        demo_torch_yy = []
         train_losses = []
         val_losses = []
         for is_training, xx, yy in each_batch:
-            x, = xx
-            x = x.astype('float32')
+            orig_x, = xx
+            x = orig_x.astype('float32')
 
-            # Randomly darken the input images.
+            # Randomly darken the input images to better handle nighttime.
             x *= np.random.uniform(0.1, 1)
 
             x /= 127.5
@@ -77,6 +86,11 @@ class HeatmapperModel(nn.Module):
             y = y.astype('float32')
             y = torch.from_numpy(y).cuda()
 
+            if not is_training and np.random.uniform() < 0.2:
+                demo_orig_xx.append(orig_x)
+                demo_torch_xx.append(x)
+                demo_torch_yy.append(y)
+
             if is_training:
                 self.train()
                 self.train_on_batch(optimizer, x, y, train_losses)
@@ -87,6 +101,44 @@ class HeatmapperModel(nn.Module):
         train_loss = np.mean(train_losses)
         val_loss = np.mean(val_losses)
         print('%4d %.3f %.3f' % (epoch, train_loss, val_loss))
+
+        if save_dir:
+            t = int(train_loss * 1000)
+            v = int(val_loss * 1000)
+            d = 'epoch_%04d_%04d_%04d' % (epoch, t, v)
+            print('>', d)
+            d = os.path.join(save_dir, d)
+            os.makedirs(d)
+
+            f = 'model.bin'
+            f = os.path.join(d, f)
+            torch.save(self, f)
+
+            self.eval()
+            n = len(demo_orig_xx)
+            print('demo batches:', n)
+            for i in range(n):
+                crop = demo_orig_xx[i]
+                torch_x = demo_torch_xx[i]
+                torch_y_true = demo_torch_yy[i]
+                torch_y_pred = self.forward(torch_x)
+                y_pred = torch_y_pred.detach().cpu().numpy()
+                heatmaps = y_pred.transpose([0, 2, 3, 1])
+                heatmaps = heatmaps.repeat(3, 3)
+                heatmaps *= 255
+                for j in range(len(crop)):
+                    heatmap = heatmaps[j]
+                    if heatmap.max():
+                        heatmap /= heatmap.max()
+                    heatmap = heatmap.astype('uint8')
+                    canvas = crop[j] // 4
+                    canvas = (canvas.astype('uint16') +
+                              heatmap.astype('uint16')).astype('uint8')
+                    im = Image.fromarray(canvas)
+                    index = i * batch_size + j
+                    f = 'demo_%05d.jpg' % index
+                    f = os.path.join(d, f)
+                    im.save(f)
 
     def fit(self, dataset, optimizer, initial_epoch=0, num_epochs=10,
             max_batches_per_epoch=None, batch_size=32, save_dir=None,
