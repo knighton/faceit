@@ -96,17 +96,17 @@ class IsoDenseBlock(nn.Module):
         t = self.dense(x)
         k = self.k
 
-        one = t[:, :k].clone()
+        one = t[:, k * 0:k * 1].clone()
         one = self.bn1(one)
         one = self.drop1(one)
         one = one.clamp(min=0)
 
-        two = t[:, k:k * 2] * t[:, k * 2:k * 3].sigmoid()
+        two = t[:, k * 1:k * 2] * t[:, k * 2:k * 3].sigmoid()
         two = self.bn2(two)
         two = self.drop2(two)
         two = two.clamp(min=0)
 
-        three = t[:, k * 2:k * 3] * t[:, k * 4:].sigmoid()
+        three = t[:, k * 3:k * 4] * t[:, k * 4:k * 5].sigmoid()
         three = self.bn3(three)
         three = self.drop3(three)
         three = three.clamp(min=0)
