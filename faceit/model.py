@@ -65,24 +65,17 @@ class Model(nn.Module):
 
             IsoConvBlock(k),
             IsoConvBlock(k),
-
-            ReduceBlock(k),
-
-            IsoConvBlock(k),
             IsoConvBlock(k),
 
             ReduceBlock(k),
 
             IsoConvBlock(k),
             IsoConvBlock(k),
-
-            ReduceBlock(k),
-
-            IsoConvBlock(k),
             IsoConvBlock(k),
 
             ReduceBlock(k),
 
+            IsoConvBlock(k),
             IsoConvBlock(k),
             IsoConvBlock(k),
 
@@ -97,10 +90,21 @@ class Model(nn.Module):
             IsoConvBlock(k),
             IsoConvBlock(k),
             IsoConvBlock(k),
+
+            ReduceBlock(k),
+
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+
+            ReduceBlock(k),
 
             Flatten(),
 
             IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
             IsoDenseBlock(k),
             IsoDenseBlock(k),
             IsoDenseBlock(k),
@@ -144,10 +148,10 @@ class Model(nn.Module):
         return is_faces, is_males, poses, bboxes, keypoints
 
     def get_faceness_loss(self, true, pred):
-        return binary_cross_entropy(true, pred)
+        return binary_cross_entropy(true, pred) / 4
 
     def get_gender_loss(self, true, pred):
-        loss = binary_cross_entropy(true, pred)
+        loss = binary_cross_entropy(true, pred) / 4
         acc = binary_accuracy(true, pred)
         return loss, acc
 
