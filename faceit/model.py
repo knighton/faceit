@@ -224,6 +224,10 @@ class Model(nn.Module):
 
             x, = xx
             x = x.astype('float32')
+
+            # Randomly darken the input images.
+            x *= np.random.uniform(0.1, 1)
+
             x /= 127.5
             x -= 1
             x = x.transpose([0, 3, 1, 2])
