@@ -45,9 +45,7 @@ class IsoConvBlock(nn.Module):
 
         self.conv = nn.Conv2d(k, 3 * k, 5, 1, 2)
         self.bn1 = nn.BatchNorm2d(k)
-        # self.drop1 = nn.Dropout2d()
         self.bn2 = nn.BatchNorm2d(k)
-        # self.drop2 = nn.Dropout2d()
 
         weights = torch.FloatTensor([1, 0, 0])
         self.weights = nn.Parameter(weights)
@@ -57,11 +55,9 @@ class IsoConvBlock(nn.Module):
         k = self.k
         conv = t[:, :k, :, :].clone()
         conv = self.bn1(conv).clamp(min=0)
-        # conv = self.drop1(conv)
         gate = t[:, k:2 * k, :, :].clone()
         gate *= t[:, 2 * k:, :, :].sigmoid()
         gate = self.bn2(gate).clamp(min=0)
-        # gate = self.drop2(gate)
         w = self.weights
         return w[0] * x + w[1] * conv + w[2] * gate
 
@@ -87,11 +83,8 @@ class IsoDenseBlock(nn.Module):
 
         self.dense = nn.Linear(k, 5 * k)
         self.bn1 = nn.BatchNorm1d(k)
-        self.drop1 = nn.Dropout()
         self.bn2 = nn.BatchNorm1d(k)
-        self.drop2 = nn.Dropout()
         self.bn3 = nn.BatchNorm1d(k)
-        self.drop3 = nn.Dropout()
 
         weights = torch.FloatTensor([1, 0, 0, 0])
         self.weights = nn.Parameter(weights)
@@ -102,17 +95,14 @@ class IsoDenseBlock(nn.Module):
 
         one = t[:, :k].clone()
         one = self.bn1(one)
-        one = self.drop1(one)
         one = one.clamp(min=0)
 
         two = t[:, k:k * 2] * t[:, k * 2:k * 3].sigmoid()
         two = self.bn2(two)
-        two = self.drop2(two)
         two = two.clamp(min=0)
 
         three = t[:, k * 2:k * 3] * t[:, k * 4:].sigmoid()
         three = self.bn3(three)
-        three = self.drop3(three)
         three = three.clamp(min=0)
 
         w = self.weights
@@ -141,9 +131,7 @@ class ReduceBlock(nn.Module):
         self.max_pool = nn.MaxPool2d(2)
         self.conv = nn.Conv2d(k, 3 * k, 5, 2, 2)
         self.bn1 = nn.BatchNorm2d(k)
-        self.drop1 = nn.Dropout2d()
         self.bn2 = nn.BatchNorm2d(k)
-        self.drop2 = nn.Dropout2d()
 
         weights = torch.FloatTensor([0.5, 0.5, 0, 0])
         self.weights = nn.Parameter(weights)
@@ -155,11 +143,9 @@ class ReduceBlock(nn.Module):
         k = self.k
         conv = t[:, :k, :, :].clone()
         conv = self.bn1(conv).clamp(min=0)
-        conv = self.drop1(conv)
         gate = t[:, k:2 * k, :, :] * t[:, 2 * k:, :, :].sigmoid()
         gate = gate.clone()
         gate = self.bn2(gate).clamp(min=0)
-        gate = self.drop2(gate)
         w = self.weights
         return w[0] * avg_pool + w[1] * max_pool + w[2] * conv + w[3] * gate
 
