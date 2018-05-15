@@ -15,36 +15,7 @@ Faceit is a joint model traind on UMDFaces that takes color 128x128 images and p
 
 ![More demos](https://github.com/knighton/faceit/raw/master/drivers.png)
 
-## 2. Blocks
-
-A block is collection of pathways paired with multipliers/"switches"/"gates" that are learned.  The isomorphic blocks have skip connections and the reduce blocks have pooling pathways, which allows you to stack them as deep as you want.  What I think is neat about this design is as follows: the pathways have different levels of complexity.  You can monitor the switches during training to see how much it has to rely on the slower-to-learn complex pathways vs the skip connections. This allows you to tune architecture depth.  This could be done automatically to grow a network from scratch as the switches tell you it is begging for additional capacity.  Furthermore, you could use switch monitoring to go the other direction: retraining a network with a block removed at a time, with precise information about how capacity is holding up, to speed performance in tight ennvironments.  I really think this direction should be explored <<bat signal>> but no time for now.
-
-Three kinds of blocks:
-
-Convolutional isomorphic (initialized with weights [1, 0, 0]):
-* Skip connection
-* Convolution -- conv2d, batch norm, relu, optionally dropout
-* Gated convolution (a primitive form of attention -- see Gated Convolutional Networks paper)
-
-Fully connected isomorphic (initialized with weights [1, 0, 0, 0]):
-* Skip connection
-* Affine transformation -- linear, batch norm, relu, dropout
-* Gated affine (affine equivalent of gated conv)
-
-Convolutional reduce (initialized with weights [0.5, 0.5, 0, 0]):
-* Average pooling
-* Max pooling (in theory you might worry about overfitting, but in practice I removed dropout)
-* Strided convolution
-* Gated strided convolution
-
-I like this design because you can invent new pathways, and see very quickly how much the model relies on it, or not.
-
-Other pathways I experimented with:
-* Fully-connected block: Two outputs; multiply their sqrt of n + 1 into one output.  The scaling is to fight nans/gradient explosion.  More general/powerful than sigmoid multiply gating?  Perhaps having to have two outputs coincide in such a manner is akin to dropout and may have similar properties?
-* Iso conv block: do global max/average pooling, then affine transform that (dimensionality: num filters x num filters).  The model loved this information, but did not converge faster.  Dimensionality may have been too low, further experiments needed.
-* ...
-
-## 3. Architecture
+## 2. Architecture
 
 The model feeds the input image through a long central trunk of blocks with skip connections to the five branches, one per output.  This "trunk" squashes the images with (sometimes strided) convolutions, then flattens and does some affine transformations, resulting in an embedding vector.
 
@@ -158,6 +129,35 @@ The model feeds the input image through a long central trunk of blocks with skip
             nn.Linear(k, 4),
         )
 ```
+
+## 3. Blocks
+
+A block is collection of pathways paired with multipliers/"switches"/"gates" that are learned.  The isomorphic blocks have skip connections and the reduce blocks have pooling pathways, which allows you to stack them as deep as you want.  What I think is neat about this design is as follows: the pathways have different levels of complexity.  You can monitor the switches during training to see how much it has to rely on the slower-to-learn complex pathways vs the skip connections. This allows you to tune architecture depth.  This could be done automatically to grow a network from scratch as the switches tell you it is begging for additional capacity.  Furthermore, you could use switch monitoring to go the other direction: retraining a network with a block removed at a time, with precise information about how capacity is holding up, to speed performance in tight ennvironments.  I really think this direction should be explored <<bat signal>> but no time for now.
+
+Three kinds of blocks:
+
+Convolutional isomorphic (initialized with weights [1, 0, 0]):
+* Skip connection
+* Convolution -- conv2d, batch norm, relu, optionally dropout
+* Gated convolution (a primitive form of attention -- see Gated Convolutional Networks paper)
+
+Fully connected isomorphic (initialized with weights [1, 0, 0, 0]):
+* Skip connection
+* Affine transformation -- linear, batch norm, relu, dropout
+* Gated affine (affine equivalent of gated conv)
+
+Convolutional reduce (initialized with weights [0.5, 0.5, 0, 0]):
+* Average pooling
+* Max pooling (in theory you might worry about overfitting, but in practice I removed dropout)
+* Strided convolution
+* Gated strided convolution
+
+I like this design because you can invent new pathways, and see very quickly how much the model relies on it, or not.
+
+Other pathways I experimented with:
+* Fully-connected block: Two outputs; multiply their sqrt of n + 1 into one output.  The scaling is to fight nans/gradient explosion.  More general/powerful than sigmoid multiply gating?  Perhaps having to have two outputs coincide in such a manner is akin to dropout and may have similar properties?
+* Iso conv block: do global max/average pooling, then affine transform that (dimensionality: num filters x num filters).  The model loved this information, but did not converge faster.  Dimensionality may have been too low, further experiments needed.
+* ...
 
 ## 4. Losses
 
