@@ -8,6 +8,7 @@ from torch.optim import SGD
 from tqdm import tqdm
 
 from dataset import Dataset
+from heatmapper_model import HeatmapperModel
 from util import load_dataset
 
 
@@ -82,6 +83,14 @@ def main(flags):
     os.makedirs(flags.chk_dir)
 
     dataset = get_dataset(flags.dataset_dir, flags.val_frac)
+
+    model = HeatmapperModel(flags.dim).cuda()
+    optimizer = SGD(model.parameters(), lr=flags.lr, momentum=flags.momentum)
+
+    initial_epoch = 0
+    model.fit(dataset, optimizer, initial_epoch, flags.num_epochs,
+              flags.max_batches_per_epoch, flags.batch_size, flags.chk_dir,
+              flags.verbose)
 
 
 if __name__ == '__main__':

@@ -17,6 +17,13 @@ conv_bn_pool = lambda in_dim, out_dim: nn.Sequential(
 )
 
 
+conv_t_bn = lambda in_dim, out_dim: nn.Sequential(
+    nn.ConvTranspose2d(in_dim, out_dim, 5, 2, 2, 1),
+    nn.BatchNorm2d(out_dim),
+    nn.ReLU(),
+)
+
+
 dense_bn = lambda in_dim, out_dim: nn.Sequential(
     nn.Linear(in_dim, out_dim),
     nn.BatchNorm1d(out_dim),
