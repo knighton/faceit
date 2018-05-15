@@ -83,8 +83,11 @@ class IsoDenseBlock(nn.Module):
 
         self.dense = nn.Linear(k, 5 * k)
         self.bn1 = nn.BatchNorm1d(k)
+        self.drop1 = nn.Dropout(0.1)
         self.bn2 = nn.BatchNorm1d(k)
+        self.drop2 = nn.Dropout(0.1)
         self.bn3 = nn.BatchNorm1d(k)
+        self.drop3 = nn.Dropout(0.1)
 
         weights = torch.FloatTensor([1, 0, 0, 0])
         self.weights = nn.Parameter(weights)
@@ -95,14 +98,17 @@ class IsoDenseBlock(nn.Module):
 
         one = t[:, :k].clone()
         one = self.bn1(one)
+        one = self.drop1(one)
         one = one.clamp(min=0)
 
         two = t[:, k:k * 2] * t[:, k * 2:k * 3].sigmoid()
         two = self.bn2(two)
+        two = self.drop2(two)
         two = two.clamp(min=0)
 
         three = t[:, k * 2:k * 3] * t[:, k * 4:].sigmoid()
         three = self.bn3(three)
+        three = self.drop3(three)
         three = three.clamp(min=0)
 
         w = self.weights
