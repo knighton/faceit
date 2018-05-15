@@ -169,7 +169,7 @@ Losses were selected and balanced empirically.
 4. Face bounding box: clamp the predicted coordinates to avoid gradient explosion, then take the Euclidean distance / 32.  Was originally fancier.
 5. Eyes: see #4.
 
-Gender prediction accuracy as well as average bounding box and eye distance in pixels are also collected during training.  It gets down to about mean 3 pixels for eyes and mean 4 pixels for face bounding box on validation pretty quickly on GPU.  I was satisfied with that performance looking at demo images during training and don't have the resources to really experiment.  Because of the weird stacked gating, it's easier to improve on that by [adding more layers](https://qph.fs.quoracdn.net/main-qimg-2b1f074e9659128d405e3d87a13ae308-c).
+Gender prediction accuracy as well as average bounding box and eye distance in pixels are also collected during training.  It gets down to about mean 3 pixels for eyes and mean 4 pixels for face bounding box on validation pretty quickly on GPU.  I was satisfied with that performance looking at demo images during training and don't have the resources to really experiment.  Because of the weird stacked gating, it's easier to squeeze more performance by [adding more layers](https://qph.fs.quoracdn.net/main-qimg-2b1f074e9659128d405e3d87a13ae308-c) but it's dubious how much additional tweaking on the same dataset would generalize so I didn't bother.
 
 ## 5. Dataset
 
