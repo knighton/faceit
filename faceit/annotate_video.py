@@ -21,6 +21,9 @@ def parse_flags():
                    default='data/checkpoints/epoch_0669_0087_0109/model.bin')
     a.add_argument('--batch_size', type=int, default=32)
 
+    a.add_argument('--heatmapper_model', type=str,
+        default='data/heatmapper_checkpoints/epoch_0004_0308_0398/model.bin')
+
     a.add_argument('--in_video', type=str,
                    default='/home/frak/dev/commaai/monitoring/video1/')
 
@@ -54,7 +57,7 @@ def each_frame(video_dir, batch_size):
             yield subcrops
 
 
-def annotate_batch(joint_model, crops):
+def annotate_batch(joint_model, heatmapper_model, crops):
     # transform the crop to tensor.
     x = crops.astype('float32')
     x /= 127.5
@@ -63,9 +66,31 @@ def annotate_batch(joint_model, crops):
     x = torch.from_numpy(x).cuda()
     xx = [x]
 
-    # Forward pass.
-    is_faces, is_males, poses, bboxes, keypoints = joint_model.forward(xx)
+    # Darken the original images.
+    crops = crops.astype('float32')
+    crops *= 0.75
 
+    # Forward passes.
+    is_faces, is_males, poses, bboxes, keypoints = joint_model.forward(xx)
+    heatmaps = heatmapper_model.forward(x)
+
+    # Lighten according to faceness.
+    heatmaps = heatmaps.detach().cpu().numpy()
+    heatmaps = heatmaps.transpose([0, 2, 3, 1])
+    heatmaps += 1
+    heatmaps **= 2
+    heatmaps -= 1
+    heatmaps *= 64
+    heatmaps = heatmaps.astype('float32')
+    heatmaps = heatmaps.repeat(3, 3)
+    heatmaps[:, :, :, 0] = 0
+    heatmaps[:, :, :, 2] = 0
+    for i in range(len(heatmaps)):
+        crops[i] += heatmaps[i]
+    crops = crops.clip(max=255)
+    crops = crops.astype('uint8')
+
+    """
     # Draw the bounding box.
     go = lambda x: x.detach().cpu().numpy()
     for i in range(len(bboxes)):
@@ -84,8 +109,9 @@ def annotate_batch(joint_model, crops):
         x = int(kp[2])
         y = int(kp[3])
         crops[i, y - 1:y + 2, x - 1:x + 2, :] = 255
+    """
 
-    return crops
+    return crops.clip(max=255).astype('uint8')
 
 
 def main(flags):
@@ -93,11 +119,12 @@ def main(flags):
     os.makedirs(flags.out_video)
 
     joint_model = torch.load(flags.joint_model).cuda()
+    heatmapper_model = torch.load(flags.heatmapper_model).cuda()
 
     index = 0
     for frame in each_frame(flags.in_video, flags.batch_size):
         # Modify the frame to annotate bounding box, eyes, etc.
-        ims = annotate_batch(joint_model, frame)
+        ims = annotate_batch(joint_model, heatmapper_model, frame)
 
         # Save to file.
         for i in range(len(ims)):
