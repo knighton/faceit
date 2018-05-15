@@ -7,11 +7,11 @@ A deep convolutional face detector in PyTorch.
 ## 1. Overview
 
 Faceit is a joint model traind on UMDFaces that takes color 128x128 images and predicts:
-1. whether there is a face
-2. gender
-3. pose (yaw, pitch, roll)
-4. face bounding box
-5. eyes.
+### 1. is face
+### 2. gender
+### 3. pose (yaw, pitch, roll)
+### 4. face bounding box
+### 5. eyes.
 
 ![More demos](https://github.com/knighton/faceit/raw/master/drivers.png)
 
