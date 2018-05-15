@@ -6,7 +6,7 @@ from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from blox import conv_bn_pool, conv_t_bn, IsoConvBlock, ReduceBlock
+from blox import conv_bn, conv_bn_pool, conv_t_bn, IsoConvBlock, ReduceBlock
 
 
 def mean_to_float(x):
@@ -16,27 +16,43 @@ def mean_to_float(x):
     return float(x)
 
 
+def to_float(x):
+    x = x.detach().cpu().numpy()
+    x = np.asscalar(x)
+    return float(x)
+
+
 class HeatmapperModel(nn.Module):
     def __init__(self, k):
         super().__init__()
+        self.k = k
         self.seq = nn.Sequential(
-            conv_bn_pool(3, k),  # 128 -> 64.
-            ReduceBlock(k),  # 64 -> 32.
-            ReduceBlock(k),  # 32 -> 16.
-            ReduceBlock(k),  # 16 -> 8.
+            conv_bn_pool(3, k),
+            conv_bn_pool(k, k),
+            conv_bn_pool(k, k),
+            conv_bn_pool(k, k),
+            conv_bn_pool(k, k),
 
             IsoConvBlock(k),
             IsoConvBlock(k),
             IsoConvBlock(k),
+            IsoConvBlock(k),
 
-            conv_t_bn(k, k),  # 8 -> 16.
-            conv_t_bn(k, k),  # 16 -> 32.
-            conv_t_bn(k, k),  # 32 -> 64.
-            conv_t_bn(k, 1),  # 64 -> 128.
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+            IsoConvBlock(k),
+
+            conv_t_bn(k, k),
+            conv_t_bn(k, k),
+            conv_t_bn(k, k),
+            conv_t_bn(k, k),
+            conv_t_bn(k, 1),
+            nn.Conv2d(1, 1, 5, 1, 2),
         )
 
     def forward(self, clips):
-        return self.seq(clips)
+        return F.sigmoid(self.seq(clips) / 1000)
 
     def get_loss(self, true, pred):
         pred = pred.clamp(1e-5, 1 - 1e-5)
@@ -84,6 +100,7 @@ class HeatmapperModel(nn.Module):
 
             y, = yy
             y = y.astype('float32')
+            y = y.transpose([0, 3, 1, 2])
             y = torch.from_numpy(y).cuda()
 
             if not is_training and np.random.uniform() < 0.2:
@@ -128,12 +145,10 @@ class HeatmapperModel(nn.Module):
                 heatmaps *= 255
                 for j in range(len(crop)):
                     heatmap = heatmaps[j]
-                    if heatmap.max():
-                        heatmap /= heatmap.max()
                     heatmap = heatmap.astype('uint8')
                     canvas = crop[j] // 4
-                    canvas = (canvas.astype('uint16') +
-                              heatmap.astype('uint16')).astype('uint8')
+                    canvas = canvas.astype('uint16') + heatmap.astype('uint16')
+                    canvas = canvas.clip(max=255).astype('uint8')
                     im = Image.fromarray(canvas)
                     index = i * batch_size + j
                     f = 'demo_%05d.jpg' % index
