@@ -17,14 +17,14 @@ tqdm.monitor_interval = 0
 def parse_flags():
     a = ArgumentParser()
 
-    a.add_argument('--model', type=str,
-                   default='data/checkpoints/epoch_0180_0114_0130/model.bin')
+    a.add_argument('--joint_model', type=str,
+                   default='data/checkpoints/epoch_0669_0087_0109/model.bin')
     a.add_argument('--batch_size', type=int, default=32)
 
     a.add_argument('--in_video', type=str,
-                   default='/home/frak/dev/commaai/monitoring/video4/')
+                   default='/home/frak/dev/commaai/monitoring/video1/')
 
-    a.add_argument('--out_video', type=str, default='data/anno4/')
+    a.add_argument('--out_video', type=str, default='data/anno1/')
 
     return a.parse_args()
 
@@ -54,7 +54,7 @@ def each_frame(video_dir, batch_size):
             yield subcrops
 
 
-def annotate_batch(model, crops):
+def annotate_batch(joint_model, crops):
     # transform the crop to tensor.
     x = crops.astype('float32')
     x /= 127.5
@@ -64,7 +64,7 @@ def annotate_batch(model, crops):
     xx = [x]
 
     # Forward pass.
-    is_faces, is_males, poses, bboxes, keypoints = model.forward(xx)
+    is_faces, is_males, poses, bboxes, keypoints = joint_model.forward(xx)
 
     # Draw the bounding box.
     go = lambda x: x.detach().cpu().numpy()
@@ -92,12 +92,12 @@ def main(flags):
     assert not os.path.exists(flags.out_video)
     os.makedirs(flags.out_video)
 
-    model = torch.load(flags.model).cuda()
+    joint_model = torch.load(flags.joint_model).cuda()
 
     index = 0
     for frame in each_frame(flags.in_video, flags.batch_size):
         # Modify the frame to annotate bounding box, eyes, etc.
-        ims = annotate_batch(model, frame)
+        ims = annotate_batch(joint_model, frame)
 
         # Save to file.
         for i in range(len(ims)):
