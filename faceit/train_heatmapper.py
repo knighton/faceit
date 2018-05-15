@@ -33,7 +33,7 @@ def parse_flags():
                    default='data/heatmapper_checkpoints/')
     a.add_argument('--lr', type=float, default=0.001)
     a.add_argument('--momentum', type=float, default=0.8)
-    a.add_argument('--num_epochs', type=int, default=10000)
+    a.add_argument('--num_epochs', type=int, default=4)
     a.add_argument('--max_batches_per_epoch', type=int, default=64)
     a.add_argument('--batch_size', type=int, default=32)
 
