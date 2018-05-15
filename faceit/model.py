@@ -108,31 +108,64 @@ class Model(nn.Module):
             IsoDenseBlock(k),
             IsoDenseBlock(k),
             IsoDenseBlock(k),
+
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
         )
 
         self.is_face = nn.Sequential(
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.is_male = nn.Sequential(
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
             nn.Linear(k, 1),
             nn.Sigmoid(),
         )
 
         self.get_pose = nn.Sequential(
             IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
             nn.Linear(k, 3),
             Degrees(),
         )
 
         self.get_face_bbox = nn.Sequential(
             IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
             nn.Linear(k, 4),
         )
 
         self.get_keypoints = nn.Sequential(
             IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+            IsoDenseBlock(k),
+
             nn.Linear(k, 4),
         )
 
